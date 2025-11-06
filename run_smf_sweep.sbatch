@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --job-name=smf_p0_sweep
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --output=logs/%x-%A_%a.out
@@ -36,7 +36,7 @@ echo "Simulation name: ${SIM_NAME}"
 echo "Analytic t0 extension enabled (--extend-time-using-t0)."
 
 # --- Run job (your script computes p0 from s,e,n,i) ---
-cd /home/users/seb25178/Projects/BEC_SMF/BEC_patt2d_smf/patt2d_sfm_q-Python
+cd /home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim
 mkdir -p logs
 
 python patt2d_q_sfm.py \

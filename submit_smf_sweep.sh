@@ -29,14 +29,14 @@ done
 export P0_START P0_END N_INTERVALS
 export SIM_NAME
 
-cd /home/users/seb25178/Projects/BEC_SMF/BEC_patt2d_smf/patt2d_sfm_q-Python
+cd /home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim
 mkdir -p logs
 
 # If N_INTERVALS = M (number of intervals), indices should be 0..M (inclusive) => M+1 total values.
 ARRAY_SPEC="0-${N_INTERVALS}"
 
 sbatch \
-  --chdir=/home/users/seb25178/Projects/BEC_SMF/BEC_patt2d_smf/patt2d_sfm_q-Python \
+  --chdir=/home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim \
   --export=ALL \
   --array="${ARRAY_SPEC}" \
   run_smf_sweep.sbatch
