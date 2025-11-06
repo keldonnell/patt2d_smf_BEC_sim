@@ -4,7 +4,9 @@
 Create an animation of the 2D BEC simulation showing density and intensity side by side.
 """
 import argparse
+import re
 from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -50,10 +52,70 @@ def parse_args():
         default="ffmpeg",
         help="Animation writer to use (default: ffmpeg).",
     )
+    parser.add_argument(
+        "-i",
+        "--index",
+        type=int,
+        help="Optional pump-frame index to select when multiple output files exist.",
+    )
     return parser.parse_args()
 
 
-def configure_paths(simulation, input_root, output_root):
+def pick_output_files(output_dir: Path, index: Optional[int]):
+    base_s = output_dir / "s.out"
+    base_psi = output_dir / "psi.out"
+
+    def find_indexed(idx: int):
+        s_candidates = sorted(output_dir.glob(f"s{idx}_*.out"))
+        psi_candidates = sorted(output_dir.glob(f"psi{idx}_*.out"))
+        if not s_candidates or not psi_candidates:
+            return None, None
+        if len(s_candidates) > 1 or len(psi_candidates) > 1:
+            raise RuntimeError(
+                f"Found multiple files for index {idx} in {output_dir}; "
+                "please clean up duplicates."
+            )
+        return s_candidates[0], psi_candidates[0]
+
+    if index is not None:
+        s_file, psi_file = find_indexed(int(index))
+        if s_file is None or psi_file is None:
+            raise FileNotFoundError(
+                f"No output files found for index {index} in {output_dir}."
+            )
+        return s_file, psi_file
+
+    if base_s.exists() and base_psi.exists():
+        return base_s, base_psi
+
+    s_map = {}
+    for s_file in output_dir.glob("s*_*.out"):
+        match = re.match(r"s(\d+)_", s_file.stem)
+        if match:
+            s_map[int(match.group(1))] = s_file
+
+    psi_map = {}
+    for psi_file in output_dir.glob("psi*_*.out"):
+        match = re.match(r"psi(\d+)_", psi_file.stem)
+        if match:
+            psi_map[int(match.group(1))] = psi_file
+
+    common_indices = sorted(set(s_map) & set(psi_map))
+    if not common_indices:
+        raise FileNotFoundError(
+            f"Could not locate matching s/psi output files in {output_dir}."
+        )
+    if len(common_indices) > 1:
+        raise RuntimeError(
+            "Multiple indexed output files found. "
+            "Please re-run with --index to choose a specific frame."
+        )
+
+    idx = common_indices[0]
+    return s_map[idx], psi_map[idx]
+
+
+def configure_paths(simulation, input_root, output_root, index: Optional[int]):
     input_dir = Path(input_root) / simulation
     output_dir = Path(output_root) / simulation
 
@@ -61,12 +123,7 @@ def configure_paths(simulation, input_root, output_root):
     if not input_file.exists():
         raise FileNotFoundError(f"Could not find input file at {input_file}.")
 
-    s_path = output_dir / "s.out"
-    psi_path = output_dir / "psi.out"
-    if not s_path.exists() or not psi_path.exists():
-        raise FileNotFoundError(
-            f"Expected simulation outputs at {s_path} and {psi_path}; run the simulation first."
-        )
+    s_path, psi_path = pick_output_files(output_dir, index)
 
     return input_file, s_path, psi_path, output_dir
 
@@ -143,10 +200,19 @@ def prepare_axes(nodes_per_dim, num_crit, s_data, psi_data):
     return fig, axes, im_psi, im_s, times, psi_values, s_values, time_text
 
 
-def animate(simulation, input_root, output_root, output_file, fps, writer_choice):
+def animate(
+    simulation,
+    input_root,
+    output_root,
+    index: Optional[int],
+    output_file,
+    fps,
+    writer_choice,
+):
     input_file, s_path, psi_path, output_dir = configure_paths(
-        simulation, input_root, output_root
+        simulation, input_root, output_root, index
     )
+    print(f"Using output files:\n  {s_path}\n  {psi_path}")
     nodes_per_dim, num_crit = read_input_metadata(input_file)
     s_data, psi_data = load_output_data(s_path, psi_path)
 
@@ -197,6 +263,7 @@ def main():
         args.filename,
         args.input_root,
         args.output_root,
+        args.index,
         args.output_file,
         args.fps,
         args.writer,

@@ -22,7 +22,7 @@ except ImportError:
         raise
 
 MAX_ANALYTIC_TIME = 1e9
-TIME_EXTENSION_FACTOR = 3.0
+TIME_EXTENSION_FACTOR = 2.0
 
 INPUT_FILE = None
 OUTPUT_DIR = None
@@ -313,6 +313,7 @@ def main():
 
         shift, L_dom, hx, tperplot, x, y0, noise, kxmat, kymat = initvars()
         seed_amplitude = float(np.max(np.abs(y0)))
+        print(f'The seed amp is {seed_amplitude}')
 
         if extend_time_using_t0:
             target_maxt = base_maxt
