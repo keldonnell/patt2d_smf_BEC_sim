@@ -49,6 +49,12 @@ def openfiles():
 def readinput():
     data0 = np.genfromtxt(str(INPUT_FILE),skip_footer=1,comments='!')         #load input data file
 
+    if data0.size not in (11, 12):
+        raise ValueError(
+            "Expected 11 or 12 numeric entries in input file (excluding final flag). "
+            f"Found {data0.size} values."
+        )
+
     nodes_per_dim=data0[0].astype(int)     
     maxt=data0[1]      
     ht=data0[2]
@@ -60,8 +66,9 @@ def readinput():
     num_crit=data0[8]
     R=data0[9]
     plotnum=data0[10].astype(int)
+    seed_amp = float(data0[11]) if data0.size >= 12 else 1.0e-6
     
-    return nodes_per_dim,maxt,ht,width_psi,p0,Delta,omega_r,b0,num_crit,R,plotnum
+    return nodes_per_dim,maxt,ht,width_psi,p0,Delta,omega_r,b0,num_crit,R,plotnum,seed_amp
 
 #Initialise variables
 def initvars():
@@ -73,7 +80,7 @@ def initvars():
     xmat=np.tile(x,[nodes_per_dim,1])
     ymat=np.transpose(xmat)
     y0=np.complex64(np.exp(-(xmat**2+ymat**2)/(2.0*width_psi**2)))
-    y0=y0*(1.0+1.0e-6*(np.cos(xmat)+np.cos(-1.0/2.0*xmat+np.sqrt(3)/2.0*ymat)+np.cos(-1.0/2.0*xmat-np.sqrt(3)/2.0*ymat)));
+    y0=y0*(1.0+seed_amplitude*(np.cos(xmat)+np.cos(-1.0/2.0*xmat+np.sqrt(3)/2.0*ymat)+np.cos(-1.0/2.0*xmat-np.sqrt(3)/2.0*ymat)));
     norm=hx*hx*np.sum(np.abs(y0)**2)
     y0=y0/np.sqrt(norm)*L_dom
     noise=np.random.random_sample(nodes_per_dim)*0.0
@@ -241,7 +248,7 @@ def main():
     S_BASE = OUTPUT_DIR / "s"
     PSI_BASE = OUTPUT_DIR / "psi"
 
-    global nodes_per_dim, maxt, ht, width_psi, p0, Delta, omega_r, b0, num_crit, R, plotnum
+    global nodes_per_dim, maxt, ht, width_psi, p0, Delta, omega_r, b0, num_crit, R, plotnum, seed_amplitude
     (
         nodes_per_dim,
         maxt,
@@ -254,11 +261,13 @@ def main():
         num_crit,
         R,
         plotnum,
+        seed_amplitude,
     ) = readinput()
 
     base_maxt = float(maxt)
     base_p0 = float(p0)
     base_plotnum = int(plotnum)
+    base_seed = float(seed_amplitude)
 
     start_param = args.start_pump_param
     end_param = args.end_pump_param
@@ -312,8 +321,6 @@ def main():
         plotnum = base_plotnum
 
         shift, L_dom, hx, tperplot, x, y0, noise, kxmat, kymat = initvars()
-        seed_amplitude = float(np.max(np.abs(y0)))
-        print(f'The seed amp is {seed_amplitude}')
 
         if extend_time_using_t0:
             target_maxt = base_maxt
@@ -323,7 +330,7 @@ def main():
                 and p0 > pump_threshold_val
             ):
                 analytic_t0 = analytic_delay_time(
-                    p0, pump_threshold_val, omega_r, seed_amplitude
+                    p0, pump_threshold_val, omega_r, base_seed
                 )
                 if np.isfinite(analytic_t0):
                     adjusted_time = min(

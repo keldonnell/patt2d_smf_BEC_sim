@@ -9,4 +9,5 @@
 8.0      !Number of critical wavelengths in domain (num_crit)
 1.0      !Mirror reflectivity
 101      !No. of outputs
+1.0e-6   !Seed amplitude
 .T.      !FFT output flag  
