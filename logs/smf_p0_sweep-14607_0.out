@@ -1,0 +1,21 @@
+/opt/local/miniconda_23_9/lib/python3.11/site-packages/conda/base/context.py:201: FutureWarning: Adding 'defaults' to channel list implicitly is deprecated and will be removed in 25.3. 
+
+To remove this warning, please choose a default channel explicitly with conda's regular configuration system, e.g. by adding 'defaults' to the list of channels:
+
+  conda config --add channels defaults
+
+For more information see https://docs.conda.io/projects/conda/en/stable/user-guide/configuration/use-condarc.html
+
+  deprecated.topic(
+JOB 14608 ARRAY_ID 0  -> i=0 ; range=[1.7e-10, 1.7e-10] ; intervals=1 (frames=2)
+Simulation name: default_2d_run
+Analytic t0 extension enabled (--extend-time-using-t0).
+Traceback (most recent call last):
+  File "/home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim/patt2d_q_sfm.py", line 377, in <module>
+    main()
+  File "/home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim/patt2d_q_sfm.py", line 245, in main
+    INPUT_FILE, OUTPUT_DIR = configure_paths(
+                             ^^^^^^^^^^^^^^^^
+  File "/home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim/patt2d_q_sfm.py", line 216, in configure_paths
+    raise FileNotFoundError(
+FileNotFoundError: Could not find input file at inputs/default_2d_run/input.in. Ensure the simulation folder and input.in exist.
