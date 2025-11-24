@@ -157,6 +157,7 @@ def main() -> None:
     analytic_p_values: list[float] = []
     analytic_delay_times: list[float] = []
 
+
     for psi_path in psi_files:
         p0_val = extract_p0_from_name(psi_path)
         if p0_val is None:
@@ -180,7 +181,11 @@ def main() -> None:
             continue
 
         trace = density_cube[:, y_idx, x_idx]
-        peaks, _ = find_peaks(trace, prominence=args.min_prominence)
+        if args.min_prominence == None:
+            prominence = np.max(trace) / 2
+        else:
+            prominence = args.min_prominence
+        peaks, _ = find_peaks(trace, prominence=prominence)
 
         if peaks.size == 0:
             print(f"{psi_path.name}: no real peaks detected at x={x_val:.3f}, y={y_val:.3f}.")
@@ -241,12 +246,12 @@ def main() -> None:
         ax.plot(
             analytic_p_arr,
             analytic_arr,
-            label="Analytic delay",
+            label="Analytic delay 1D",
             color="tab:orange",
             linestyle="--",
         )
     ax.set_xlabel("p0")
-    ax.set_ylabel("Delay time")
+    ax.set_ylabel(r"$t_0$")
     ax.set_title(
         rf"Delay time at x={x_val:.3f}, y={y_val:.3f} for {args.filename} "
         r"(p0 > $p_{\mathrm{th}}$)"

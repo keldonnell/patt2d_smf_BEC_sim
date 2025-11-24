@@ -22,7 +22,7 @@ except ImportError:
         raise
 
 MAX_ANALYTIC_TIME = 3e10
-TIME_EXTENSION_FACTOR = 3.0
+TIME_EXTENSION_FACTOR = 2.5 
 
 INPUT_FILE = None
 OUTPUT_DIR = None
@@ -59,7 +59,7 @@ def readinput():
     maxt=data0[1]      
     ht=data0[2]
     width_psi=data0[3]
-    p0=data0[4]
+    p0_in=data0[4]
     Delta=data0[5]
     omega_r=data0[6]
     b0=data0[7]
@@ -68,7 +68,7 @@ def readinput():
     plotnum=data0[10].astype(int)
     seed_amp = float(data0[11]) if data0.size >= 12 else 1.0e-6
     
-    return nodes_per_dim,maxt,ht,width_psi,p0,Delta,omega_r,b0,num_crit,R,plotnum,seed_amp
+    return nodes_per_dim,maxt,ht,width_psi,p0_in,Delta,omega_r,b0,num_crit,R,plotnum,seed_amp
 
 #Initialise variables
 def initvars():
@@ -254,7 +254,7 @@ def main():
         maxt,
         ht,
         width_psi,
-        p0,
+        p0_input,
         Delta,
         omega_r,
         b0,
@@ -265,7 +265,7 @@ def main():
     ) = readinput()
 
     base_maxt = float(maxt)
-    base_p0 = float(p0)
+    base_p0 = float(p0_input)
     base_plotnum = int(plotnum)
     base_seed = float(seed_amplitude)
 
@@ -336,7 +336,7 @@ def main():
                     adjusted_time = min(
                         analytic_t0 * TIME_EXTENSION_FACTOR, MAX_ANALYTIC_TIME
                     )
-                    target_maxt = max(base_maxt, adjusted_time)
+                    target_maxt = adjusted_time 
 
             if target_maxt - base_maxt > 1e-12:
                 print(
