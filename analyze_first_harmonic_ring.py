@@ -9,18 +9,34 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
+try:
+    from analytic_predictors import pump_threshold
+except ImportError as exc:
+    raise SystemExit(
+        "Could not import analytic predictors. Ensure analytic_predictors.py is available."
+    ) from exc
 
 
 @dataclass
 class HarmonicResult:
     psi_path: Path
     p0: float | None
+    psi_index: int | None
     peak_time: float
     peak_density: float
     ring_integral: float
     peak_radius: float
     inner_radius: float
     outer_radius: float
+
+
+@dataclass
+class SimulationParameters:
+    nodes_per_dim: int
+    num_crit: float
+    omega_r: float
+    b0: float
+    reflectivity: float
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +72,15 @@ def parse_args() -> argparse.Namespace:
         help="Root directory where simulation outputs live (default: outputs).",
     )
     parser.add_argument(
+        "--inspect-index",
+        type=int,
+        metavar="IDX",
+        help=(
+            "Show intermediate plots (FFT contour + integration ring) for a specific psi index. "
+            "The index is parsed from filenames like psi<ID>_*.out."
+        ),
+    )
+    parser.add_argument(
         "-save",
         nargs="?",
         const="",
@@ -81,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_grid_parameters(sim_name: str, input_root: str) -> tuple[int, float]:
+def read_simulation_parameters(sim_name: str, input_root: str) -> SimulationParameters:
     input_path = Path(input_root) / sim_name / "input.in"
     if not input_path.exists():
         raise FileNotFoundError(f"Could not find {input_path}")
@@ -90,9 +115,13 @@ def read_grid_parameters(sim_name: str, input_root: str) -> tuple[int, float]:
     if data.size < 10:
         raise ValueError(f"Input file {input_path} does not contain enough entries.")
 
-    nodes_per_dim = int(data[0])
-    num_crit = float(data[8])
-    return nodes_per_dim, num_crit
+    return SimulationParameters(
+        nodes_per_dim=int(data[0]),
+        num_crit=float(data[8]),
+        omega_r=float(data[6]),
+        b0=float(data[7]),
+        reflectivity=float(data[9]),
+    )
 
 
 def compute_grid(nodes_per_dim: int, num_crit: float) -> tuple[np.ndarray, float]:
@@ -150,10 +179,9 @@ def find_nearest(value_array: np.ndarray, target: float) -> tuple[int, float]:
 def compute_fft2(density_plane: np.ndarray, l_dom: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     nodes = density_plane.shape[0]
     hx = l_dom / float(nodes)
-    rho = density_plane / np.mean(density_plane)
-    fft_vals = np.fft.fftshift(np.fft.fft2(rho))
+    # Normalize so the DC component corresponds to the mean density (rather than total mass).
     norm_factor = (hx * hx) / (l_dom * l_dom)
-    fft_vals = norm_factor * fft_vals
+    fft_vals = norm_factor * np.fft.fftshift(np.fft.fft2(density_plane))
 
     k_vals = np.fft.fftshift(np.fft.fftfreq(nodes, d=hx) * 2.0 * np.pi)
     return k_vals, k_vals, fft_vals
@@ -229,6 +257,68 @@ def integrate_ring(
     return float(np.sum(fft_mag[ring_mask]) * area_element)
 
 
+def plot_fft_diagnostics(
+    kx_vals: np.ndarray,
+    ky_vals: np.ndarray,
+    fft_mag: np.ndarray,
+    ring_mask: np.ndarray,
+    inner_radius: float,
+    outer_radius: float,
+    peak_radius: float,
+    title: str,
+) -> None:
+    plt = get_matplotlib()
+    style_overrides = {
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.edgecolor": "#1f2933",
+        "axes.linewidth": 0.9,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+    }
+
+    with plt.rc_context(style_overrides):
+        fig, ax = plt.subplots(figsize=(6.4, 5.1))
+        KX, KY = np.meshgrid(kx_vals, ky_vals, indexing="xy")
+        levels = 50
+        contour = ax.contourf(KX, KY, fft_mag, levels=levels, cmap="inferno")
+        ax.contour(KX, KY, ring_mask, levels=[0.5], colors="#1d4f91", linewidths=1.1, linestyles="-")
+
+        for radius, style, alpha in (
+            (inner_radius, "--", 0.9),
+            (outer_radius, "--", 0.9),
+            (peak_radius, "-", 0.75),
+        ):
+            if radius > 0:
+                circle = plt.Circle(
+                    (0.0, 0.0),
+                    radius,
+                    color="#1d4f91",
+                    fill=False,
+                    linewidth=1.2,
+                    linestyle=style,
+                    alpha=alpha,
+                )
+                ax.add_patch(circle)
+
+        cbar = fig.colorbar(contour, ax=ax, fraction=0.05, pad=0.04)
+        cbar.set_label(r"$|n(k_x,k_y)|$", fontsize=10)
+
+        ax.set_xlabel(r"$k_x$")
+        ax.set_ylabel(r"$k_y$")
+        ax.set_title(title)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(-3.0, 3.0)
+        ax.set_ylim(-3.0, 3.0)
+        ax.margins(x=0.0, y=0.0)
+
+        fig.tight_layout()
+        plt.show()
+        plt.close(fig)
+
+
 def parse_p0_from_name(path: Path) -> float | None:
     stem = path.stem
     if "_" not in stem:
@@ -240,12 +330,27 @@ def parse_p0_from_name(path: Path) -> float | None:
         return None
 
 
+def parse_index_from_name(path: Path) -> int | None:
+    stem = path.stem
+    if not stem.startswith("psi"):
+        return None
+    remainder = stem[len("psi") :]
+    num_part = remainder.split("_", 1)[0]
+    if num_part == "":
+        return None
+    try:
+        return int(num_part)
+    except ValueError:
+        return None
+
+
 def analyze_file(
     psi_path: Path,
     x_idx: int,
     y_idx: int,
     grid: np.ndarray,
     l_dom: float,
+    debug_plot: bool,
 ) -> HarmonicResult:
     times, density_cube = load_density_data(psi_path)
     nodes = density_cube.shape[1]
@@ -271,9 +376,22 @@ def analyze_file(
     dky = float(np.abs(ky_vals[1] - ky_vals[0])) if len(ky_vals) > 1 else 1.0
     ring_integral = integrate_ring(fft_mag, ring_mask, dkx, dky)
 
+    if debug_plot:
+        plot_fft_diagnostics(
+            kx_vals,
+            ky_vals,
+            fft_mag,
+            ring_mask,
+            inner_radius,
+            outer_radius,
+            peak_radius,
+            title=f"{psi_path.name} @ t={peak_time:.3e}",
+        )
+
     return HarmonicResult(
         psi_path=psi_path,
         p0=parse_p0_from_name(psi_path),
+        psi_index=parse_index_from_name(psi_path),
         peak_time=peak_time,
         peak_density=peak_density,
         ring_integral=ring_integral,
@@ -330,58 +448,127 @@ def plot_results(
     save_requested: bool,
     save_arg: str | None,
     show_pref: bool,
+    p_threshold: float | None,
 ) -> None:
     if not results:
         print("No results to plot.")
         return
 
     plt = get_matplotlib()
-    have_p0 = all(res.p0 is not None for res in results)
+    style_overrides = {
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.edgecolor": "#1f2933",
+        "axes.linewidth": 0.9,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "grid.color": "#d8dee9",
+        "grid.linestyle": "-",
+        "grid.linewidth": 0.8,
+    }
 
-    if have_p0:
-        order = np.argsort([res.p0 for res in results])
-        xs = np.array([results[i].p0 for i in order], dtype=float)
-        ys = np.array([results[i].ring_integral for i in order], dtype=float)
-        x_label = r"$p_0$"
-    else:
-        xs = np.arange(len(results))
-        ys = np.array([res.ring_integral for res in results], dtype=float)
-        x_label = "psi file index"
+    with plt.rc_context(style_overrides):
+        have_p0 = all(res.p0 is not None for res in results)
 
-    fig, ax = plt.subplots()
-    ax.plot(xs, ys, marker="o")
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(r"Integrated first-harmonic magnitude")
-    ax.set_title("First-harmonic ring integral vs p0")
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(0, 0.1)
+        if have_p0:
+            order = np.argsort([res.p0 for res in results])
+            xs = np.array([results[i].p0 for i in order], dtype=float)
+            ys = np.array([results[i].ring_integral for i in order], dtype=float)
+            x_label = r"$p_0$"
+        else:
+            xs = np.arange(len(results))
+            ys = np.array([res.ring_integral for res in results], dtype=float)
+            x_label = "psi file index"
 
-    fig.tight_layout()
-
-    if save_requested:
-        first_path = results[0].psi_path
-        save_path = (
-            Path(save_arg)
-            if save_arg
-            else build_default_save_path(first_path)
+        fig, ax = plt.subplots(figsize=(6.6, 4.2))
+        line_color = "#1d4f91"
+        marker_edge = "#0b3954"
+        ax.plot(
+            xs,
+            ys,
+            color=line_color,
+            linewidth=2.0,
+            marker="o",
+            markersize=5.5,
+            markerfacecolor="white",
+            markeredgecolor=marker_edge,
+            markeredgewidth=1.4,
+            label="Simulation",
         )
-        fig.savefig(save_path, dpi=200)
-        print(f"Saved p0-vs-ring plot to {save_path}")
 
-    should_show = show_pref or not save_requested
-    if should_show:
-        plt.show()
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(r"Integrated first-harmonic magnitude")
+        ax.set_title("First-harmonic ring integral vs p0")
+        ax.grid(True, axis="both", alpha=0.55)
+        ax.margins(x=0.04)
+        if np.all(ys == 0):
+            ax.set_ylim(-0.01, 0.01)
+        else:
+            ymin = min(0.0, float(np.min(ys)) * 1.05)
+            ymax = float(np.max(ys)) * 1.08 if np.max(ys) > 0 else 0.05
+            ax.set_ylim(ymin, ymax if ymax > 0 else 0.05)
 
-    plt.close(fig)
+        if have_p0 and p_threshold is not None and np.isfinite(p_threshold):
+            threshold_color = "#c43e31"
+            ax.axvline(
+                p_threshold,
+                color=threshold_color,
+                linestyle="--",
+                linewidth=1.4,
+                label=r"$p_{th}$",
+                alpha=0.9,
+            )
+            y_top = ax.get_ylim()[1]
+            ax.annotate(
+                r"$p_{th}$",
+                xy=(p_threshold, y_top),
+                xytext=(0, -12),
+                textcoords="offset points",
+                color=threshold_color,
+                ha="center",
+                va="top",
+                fontsize=10,
+            )
+            ax.legend(frameon=False, loc="upper left")
+
+        if not have_p0:
+            for x_val, y_val, res in zip(xs, ys, results):
+                ax.annotate(
+                    res.psi_path.name,
+                    (x_val, y_val),
+                    textcoords="offset points",
+                    xytext=(0, 7),
+                    ha="center",
+                    fontsize=8,
+                    color="#444444",
+                )
+
+        fig.tight_layout()
+
+        if save_requested:
+            first_path = results[0].psi_path
+            save_path = Path(save_arg) if save_arg else build_default_save_path(first_path)
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"Saved p0-vs-ring plot to {save_path}")
+
+        should_show = show_pref and not save_requested
+        if should_show:
+            plt.show()
+
+        plt.close(fig)
 
 
 def main() -> None:
     args = parse_args()
     save_requested = args.save is not None
     show_pref = True if args.show is None else args.show
+    inspect_index = args.inspect_index
 
-    nodes_per_dim, num_crit = read_grid_parameters(args.filename, args.input_root)
-    grid, l_dom = compute_grid(nodes_per_dim, num_crit)
+    params = read_simulation_parameters(args.filename, args.input_root)
+    grid, l_dom = compute_grid(params.nodes_per_dim, params.num_crit)
+    p_threshold = pump_threshold(params.omega_r, params.b0, params.reflectivity)
 
     x_idx, x_selected = find_nearest(grid, args.x)
     y_idx, y_selected = find_nearest(grid, args.y)
@@ -389,9 +576,17 @@ def main() -> None:
     psi_files = resolve_psi_files(args.filename, args.output_root, args.index)
 
     results: list[HarmonicResult] = []
+    inspect_shown = False
     for psi_path in psi_files:
-        result = analyze_file(psi_path, x_idx, y_idx, grid, l_dom)
+        psi_idx = parse_index_from_name(psi_path)
+        debug_plot = inspect_index is not None and psi_idx == inspect_index
+        result = analyze_file(psi_path, x_idx, y_idx, grid, l_dom, debug_plot=bool(debug_plot))
         results.append(result)
+        if debug_plot:
+            inspect_shown = True
+
+    if inspect_index is not None and not inspect_shown:
+        print(f"Requested inspect-index {inspect_index}, but no matching psi file was found.")
 
     summarize_results(results)
     print()
@@ -405,6 +600,7 @@ def main() -> None:
         save_requested=save_requested,
         save_arg=args.save if isinstance(args.save, str) else None,
         show_pref=show_pref,
+        p_threshold=p_threshold,
     )
 
 

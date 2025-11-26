@@ -10,6 +10,12 @@ from typing import Sequence
 
 import numpy as np
 import math
+try:
+    from analytic_predictors import pump_threshold
+except ImportError as exc:
+    raise SystemExit(
+        "Could not import analytic predictors. Ensure analytic_predictors.py is available."
+    ) from exc
 
 
 @dataclass
@@ -21,6 +27,15 @@ class ModulationResult:
     modulation_depth: float
     plane_max: float
     plane_min: float
+
+
+@dataclass
+class SimulationParameters:
+    nodes_per_dim: int
+    num_crit: float
+    omega_r: float
+    b0: float
+    reflectivity: float
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,21 +95,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_grid_parameters(sim_name: str, input_root: str) -> tuple[int, float]:
+def read_simulation_parameters(sim_name: str, input_root: str) -> SimulationParameters:
     input_path = Path(input_root) / sim_name / "input.in"
     if not input_path.exists():
         raise FileNotFoundError(f"Could not find {input_path}")
 
     data = np.genfromtxt(str(input_path), skip_footer=1, comments="!")
-    if data.size < 9:
+    if data.size < 10:
         raise ValueError(
             f"Input file {input_path} does not contain enough entries "
-            "(at least 9 numeric values expected)."
+            "(at least 10 numeric values expected)."
         )
 
-    nodes_per_dim = int(data[0])
-    num_crit = float(data[8])
-    return nodes_per_dim, num_crit
+    return SimulationParameters(
+        nodes_per_dim=int(data[0]),
+        num_crit=float(data[8]),
+        omega_r=float(data[6]),
+        b0=float(data[7]),
+        reflectivity=float(data[9]),
+    )
 
 
 def compute_grid(nodes_per_dim: int, num_crit: float) -> np.ndarray:
@@ -246,55 +265,118 @@ def plot_modulation_depths(
     save_requested: bool,
     save_arg: str | None,
     show_pref: bool,
+    p_threshold: float | None,
 ) -> None:
     plt = get_matplotlib()
-    have_p0 = all(res.p0 is not None for res in results)
 
-    if have_p0:
-        # Sort by p0 for a clean curve
-        order = np.argsort([res.p0 for res in results])
-        xs = np.array([results[i].p0 for i in order], dtype=float)
-        ys = np.array([results[i].modulation_depth for i in order], dtype=float)
-        labels = [results[i].psi_path.name for i in order]
-        x_label = r"$p_0$"
-    else:
-        xs = np.arange(len(results))
-        ys = np.array([res.modulation_depth for res in results], dtype=float)
-        labels = [res.psi_path.name for res in results]
-        x_label = "psi file index"
+    # Local style tweaks for a clean, publication-ready look.
+    style_overrides = {
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.edgecolor": "#1f2933",
+        "axes.linewidth": 0.9,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "grid.color": "#d8dee9",
+        "grid.linestyle": "-",
+        "grid.linewidth": 0.8,
+    }
 
-    fig, ax = plt.subplots()
-    ax.plot(xs, ys, marker="o")
-    ax.set_xlabel(x_label)
-    ax.set_ylabel("Modulation depth")
-    ax.set_title("Modulation depth at peak density")
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(0.0, 1.05)
+    with plt.rc_context(style_overrides):
+        have_p0 = all(res.p0 is not None for res in results)
 
-    # Annotate each point with the corresponding psi file stem when p0 missing
-    if not have_p0:
-        for x_val, y_val, label in zip(xs, ys, labels):
-            if math.isfinite(y_val):
-                ax.annotate(label, (x_val, y_val), textcoords="offset points", xytext=(0, 6), ha="center", fontsize=8)
+        if have_p0:
+            order = np.argsort([res.p0 for res in results])
+            xs = np.array([results[i].p0 for i in order], dtype=float)
+            ys = np.array([results[i].modulation_depth for i in order], dtype=float)
+            labels = [results[i].psi_path.name for i in order]
+            x_label = r"$p_0$"
+        else:
+            xs = np.arange(len(results))
+            ys = np.array([res.modulation_depth for res in results], dtype=float)
+            labels = [res.psi_path.name for res in results]
+            x_label = "psi file index"
 
-    fig.tight_layout()
-
-    save_path: Path | None = None
-    if save_requested:
-        first_path = results[0].psi_path
-        save_path = (
-            Path(save_arg)
-            if save_arg
-            else build_default_save_path(first_path)
+        fig, ax = plt.subplots(figsize=(6.6, 4.2))
+        line_color = "#1d4f91"
+        marker_edge = "#0b3954"
+        sim_line, = ax.plot(
+            xs,
+            ys,
+            color=line_color,
+            linewidth=2.0,
+            marker="o",
+            markersize=5.5,
+            markerfacecolor="white",
+            markeredgecolor=marker_edge,
+            markeredgewidth=1.4,
+            label="Simulation",
         )
-        fig.savefig(save_path, dpi=200)
-        print(f"Saved modulation-depth plot to {save_path}")
 
-    should_show = show_pref and not save_requested
-    if should_show:
-        plt.show()
+        ax.set_xlabel(x_label)
+        ax.set_ylabel("Modulation depth")
+        ax.set_title("Modulation depth at peak density")
+        ax.set_ylim(0.0, 1.05)
+        ax.margins(x=0.04)
+        ax.grid(True, axis="both", alpha=0.55)
 
-    plt.close(fig)
+        # Add analytical threshold marker when available and relevant.
+        if have_p0 and p_threshold is not None and math.isfinite(p_threshold):
+            threshold_color = "#c43e31"
+            ax.axvline(
+                p_threshold,
+                color=threshold_color,
+                linestyle="--",
+                linewidth=1.4,
+                label=r"$p_{th}$",
+                alpha=0.9,
+            )
+            y_top = ax.get_ylim()[1]
+            ax.annotate(
+                r"$p_{th}$",
+                xy=(p_threshold, y_top),
+                xytext=(0, -12),
+                textcoords="offset points",
+                color=threshold_color,
+                ha="center",
+                va="top",
+                fontsize=10,
+            )
+
+        # Annotate each point with the corresponding psi file stem when p0 is missing.
+        if not have_p0:
+            for x_val, y_val, label in zip(xs, ys, labels):
+                if math.isfinite(y_val):
+                    ax.annotate(
+                        label,
+                        (x_val, y_val),
+                        textcoords="offset points",
+                        xytext=(0, 7),
+                        ha="center",
+                        fontsize=8,
+                        color="#444444",
+                    )
+
+        # Minimalist legend when threshold is shown.
+        if have_p0 and p_threshold is not None and math.isfinite(p_threshold):
+            ax.legend(frameon=False, loc="upper left")
+
+        fig.tight_layout()
+
+        save_path: Path | None = None
+        if save_requested:
+            first_path = results[0].psi_path
+            save_path = Path(save_arg) if save_arg else build_default_save_path(first_path)
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"Saved modulation-depth plot to {save_path}")
+
+        should_show = show_pref and not save_requested
+        if should_show:
+            plt.show()
+
+        plt.close(fig)
 
 
 def main() -> None:
@@ -302,8 +384,9 @@ def main() -> None:
     save_requested = args.save is not None
     show_pref = True if args.show is None else args.show
 
-    nodes_per_dim, num_crit = read_grid_parameters(args.filename, args.input_root)
-    grid = compute_grid(nodes_per_dim, num_crit)
+    params = read_simulation_parameters(args.filename, args.input_root)
+    grid = compute_grid(params.nodes_per_dim, params.num_crit)
+    p_threshold = pump_threshold(params.omega_r, params.b0, params.reflectivity)
 
     x_idx, x_selected = find_nearest(grid, args.x)
     y_idx, y_selected = find_nearest(grid, args.y)
@@ -329,6 +412,7 @@ def main() -> None:
             save_requested=save_requested,
             save_arg=args.save if isinstance(args.save, str) else None,
             show_pref=show_pref,
+            p_threshold=p_threshold,
         )
     else:
         print("No results to plot.")
