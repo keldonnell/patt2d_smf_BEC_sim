@@ -21,7 +21,7 @@ except ImportError:
     else:
         raise
 
-MAX_ANALYTIC_TIME = 3e10
+MAX_ANALYTIC_TIME = 6e10
 TIME_EXTENSION_FACTOR = 2.5 
 
 INPUT_FILE = None

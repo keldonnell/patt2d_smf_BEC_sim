@@ -1,6 +1,6 @@
 128      !No. of points in each dimension
-1.0e10    !Time of interaction
-1.0e4    !Timestep
+6.0e10    !Time of interaction
+0.5e4    !Timestep
 1.0e10   !Width of wavefunction in x
 2.2e-10   !p0 (Pump saturation parameter)
 500.0    !Delta (Delta)
@@ -8,6 +8,6 @@
 100.0    !Optical density (b0)
 8.0      !Number of critical wavelengths in domain (num_crit)
 1.0      !Mirror reflectivity
-101      !No. of outputs
+202      !No. of outputs
 1.0e-6   !Seed (multiplied by cos(x))
 .T.      !FFT output flag  
