@@ -190,6 +190,15 @@ def parse_args():
         help="Optional frame index when distributing work across jobs.",
     )
     parser.add_argument(
+        "--restart-from-index",
+        metavar="restart_index",
+        type=int,
+        help=(
+            "Use the final frame from existing s/psi output files with this index "
+            "as the initial state instead of the seeded Gaussian."
+        ),
+    )
+    parser.add_argument(
         "--extend-time-using-t0",
         action="store_true",
         help="Extend simulation time using analytic delay-time estimates (similar to 1D script).",
@@ -230,6 +239,65 @@ def build_output_paths(name_modifier):
     s_path = Path(base_s + suffix + ".out")
     psi_path = Path(base_psi + suffix + ".out")
     return s_path, psi_path
+
+
+def find_existing_outputs(output_dir: Path, restart_index: int):
+    """
+    Locate matching s/psi output files for a given index.
+    """
+    idx = int(restart_index)
+    base_s = output_dir / "s.out"
+    base_psi = output_dir / "psi.out"
+
+    s_candidates = sorted(output_dir.glob(f"s{idx}_*.out"))
+    psi_candidates = sorted(output_dir.glob(f"psi{idx}_*.out"))
+
+    if not s_candidates or not psi_candidates:
+        # Allow the unindexed base files when the requested index is zero.
+        if idx == 0 and base_s.exists() and base_psi.exists():
+            return base_s, base_psi
+        raise FileNotFoundError(
+            f"Could not find matching s/psi outputs for index {idx} in {output_dir}."
+        )
+
+    if len(s_candidates) > 1 or len(psi_candidates) > 1:
+        raise RuntimeError(
+            f"Found multiple output files for index {idx} in {output_dir}; "
+            "please clean up duplicates."
+        )
+
+    return s_candidates[0], psi_candidates[0]
+
+
+def load_restart_state(output_dir: Path, restart_index: int, nodes_per_dim: int):
+    """
+    Load the last time slice from existing s/psi outputs to use as the initial state.
+    """
+    s_path, psi_path = find_existing_outputs(output_dir, restart_index)
+    s_data = np.loadtxt(str(s_path))
+    psi_data = np.loadtxt(str(psi_path))
+
+    if s_data.ndim == 1:
+        s_data = s_data.reshape(1, -1)
+    if psi_data.ndim == 1:
+        psi_data = psi_data.reshape(1, -1)
+
+    if s_data.shape != psi_data.shape:
+        raise ValueError(
+            f"Mismatched shapes between {s_path.name} and {psi_path.name}: "
+            f"{s_data.shape} vs {psi_data.shape}"
+        )
+
+    expected_cols = 1 + nodes_per_dim * nodes_per_dim
+    if psi_data.shape[1] != expected_cols:
+        raise ValueError(
+            f"{psi_path.name} has {psi_data.shape[1]} columns; "
+            f"expected {expected_cols} for nodes_per_dim={nodes_per_dim}."
+        )
+
+    last_frame = psi_data[-1, 1:].reshape((nodes_per_dim, nodes_per_dim))
+    restart_state = np.sqrt(last_frame).astype(np.complex64)
+    return restart_state, (s_path, psi_path)
 
 
 def main():
@@ -299,6 +367,18 @@ def main():
 
     counter = int(index_value) if index_value is not None else 0
 
+    restart_index = args.restart_from_index
+    restart_state = None
+    restart_paths = None
+    if restart_index is not None:
+        restart_state, restart_paths = load_restart_state(
+            OUTPUT_DIR, restart_index, nodes_per_dim
+        )
+        print(
+            "Using final frame from existing outputs as initial condition: "
+            f"{restart_paths[1].name} / {restart_paths[0].name}"
+        )
+
     extend_time_using_t0 = bool(args.extend_time_using_t0)
     pump_threshold_val = (
         pump_threshold(omega_r, b0, R) if extend_time_using_t0 else None
@@ -321,6 +401,13 @@ def main():
         plotnum = base_plotnum
 
         shift, L_dom, hx, tperplot, x, y0, noise, kxmat, kymat = initvars()
+
+        if restart_state is not None:
+            y0 = np.array(restart_state, copy=True)
+            norm = hx * hx * np.sum(np.abs(y0) ** 2)
+            if norm <= 0.0:
+                raise ValueError("Loaded restart state has non-positive norm.")
+            y0 = y0 / np.sqrt(norm) * L_dom
 
         if extend_time_using_t0:
             target_maxt = base_maxt
