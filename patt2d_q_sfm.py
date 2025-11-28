@@ -28,16 +28,23 @@ INPUT_FILE = None
 OUTPUT_DIR = None
 S_BASE = None
 PSI_BASE = None
+PSI_PHASE_BASE = None
 CURRENT_S_PATH = None
 CURRENT_PSI_PATH = None
+CURRENT_PSI_PHASE_PATH = None
+PSI_PHASE_BASE = None
+CURRENT_PSI_PHASE_PATH = None
 
 #Open new output data files
 def openfiles():
     if CURRENT_S_PATH is None or CURRENT_PSI_PATH is None:
         raise RuntimeError("Output paths have not been configured.")
+    if CURRENT_PSI_PHASE_PATH is None:
+        raise RuntimeError("Phase output path has not been configured.")
 
     CURRENT_S_PATH.parent.mkdir(parents=True, exist_ok=True)
     CURRENT_PSI_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CURRENT_PSI_PHASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     with CURRENT_S_PATH.open("w"):
         pass
@@ -114,6 +121,19 @@ def output(t,y):
 
 
     return t,mod,error
+
+
+def save_final_phase_frame(t, psi):
+    """
+    Persist the complex psi field (with phase) for the final frame of a simulation.
+    """
+    if CURRENT_PSI_PHASE_PATH is None:
+        raise RuntimeError("Phase output path has not been configured.")
+
+    CURRENT_PSI_PHASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    flat = psi.reshape(1, -1).astype(np.complex128)
+    data = np.concatenate([np.array([[t + 0j]], dtype=np.complex128), flat], axis=1)
+    np.savetxt(CURRENT_PSI_PHASE_PATH, data, fmt="%.9e")
 
 #Integrate kinetic energy part of Schrodinger equation
 def propagate_bec(y,tstep):
@@ -194,7 +214,7 @@ def parse_args():
         metavar="restart_index",
         type=int,
         help=(
-            "Use the final frame from existing s/psi output files with this index "
+            "Use the final frame from existing complex psi output files with this index "
             "as the initial state instead of the seeded Gaussian."
         ),
     )
@@ -241,6 +261,12 @@ def build_output_paths(name_modifier):
     return s_path, psi_path
 
 
+def build_phase_output_path(name_modifier):
+    base_phase = str(PSI_PHASE_BASE)
+    suffix = name_modifier if name_modifier else ""
+    return Path(base_phase + suffix + ".out")
+
+
 def find_existing_outputs(output_dir: Path, restart_index: int):
     """
     Locate matching s/psi output files for a given index.
@@ -269,35 +295,49 @@ def find_existing_outputs(output_dir: Path, restart_index: int):
     return s_candidates[0], psi_candidates[0]
 
 
+def find_phase_output(output_dir: Path, restart_index: int):
+    """
+    Locate matching complex psi output file for a given index.
+    """
+    idx = int(restart_index)
+    phase_dir = output_dir / "psi_phase"
+    base_phase = phase_dir / "psi_not_squared.out"
+
+    candidates = sorted(phase_dir.glob(f"psi_not_squared{idx}_*.out"))
+    if idx == 0 and base_phase.exists():
+        return base_phase
+    if not candidates:
+        raise FileNotFoundError(
+            f"Could not find complex psi output for index {idx} in {phase_dir}."
+        )
+    if len(candidates) > 1:
+        raise RuntimeError(
+            f"Found multiple complex psi files for index {idx} in {phase_dir}; "
+            "please clean up duplicates."
+        )
+    return candidates[0]
+
+
 def load_restart_state(output_dir: Path, restart_index: int, nodes_per_dim: int):
     """
-    Load the last time slice from existing s/psi outputs to use as the initial state.
+    Load the last time slice from existing complex psi outputs to use as the initial state.
     """
-    s_path, psi_path = find_existing_outputs(output_dir, restart_index)
-    s_data = np.loadtxt(str(s_path))
-    psi_data = np.loadtxt(str(psi_path))
+    phase_path = find_phase_output(output_dir, restart_index)
+    psi_data = np.loadtxt(str(phase_path), dtype=np.complex128)
 
-    if s_data.ndim == 1:
-        s_data = s_data.reshape(1, -1)
     if psi_data.ndim == 1:
         psi_data = psi_data.reshape(1, -1)
-
-    if s_data.shape != psi_data.shape:
-        raise ValueError(
-            f"Mismatched shapes between {s_path.name} and {psi_path.name}: "
-            f"{s_data.shape} vs {psi_data.shape}"
-        )
 
     expected_cols = 1 + nodes_per_dim * nodes_per_dim
     if psi_data.shape[1] != expected_cols:
         raise ValueError(
-            f"{psi_path.name} has {psi_data.shape[1]} columns; "
+            f"{phase_path.name} has {psi_data.shape[1]} columns; "
             f"expected {expected_cols} for nodes_per_dim={nodes_per_dim}."
         )
 
     last_frame = psi_data[-1, 1:].reshape((nodes_per_dim, nodes_per_dim))
-    restart_state = np.sqrt(last_frame).astype(np.complex64)
-    return restart_state, (s_path, psi_path)
+    restart_state = last_frame.astype(np.complex64)
+    return restart_state, phase_path
 
 
 def main():
@@ -309,12 +349,13 @@ def main():
     if (args.start_pump_param is None) ^ (args.end_pump_param is None):
         raise ValueError("Specify both start and end pump parameters together.")
 
-    global INPUT_FILE, OUTPUT_DIR, S_BASE, PSI_BASE, CURRENT_S_PATH, CURRENT_PSI_PATH
+    global INPUT_FILE, OUTPUT_DIR, S_BASE, PSI_BASE, PSI_PHASE_BASE, CURRENT_S_PATH, CURRENT_PSI_PATH, CURRENT_PSI_PHASE_PATH
     INPUT_FILE, OUTPUT_DIR = configure_paths(
         args.filename, args.input_root, args.output_root
     )
     S_BASE = OUTPUT_DIR / "s"
     PSI_BASE = OUTPUT_DIR / "psi"
+    PSI_PHASE_BASE = OUTPUT_DIR / "psi_phase" / "psi_not_squared"
 
     global nodes_per_dim, maxt, ht, width_psi, p0, Delta, omega_r, b0, num_crit, R, plotnum, seed_amplitude
     (
@@ -369,14 +410,13 @@ def main():
 
     restart_index = args.restart_from_index
     restart_state = None
-    restart_paths = None
     if restart_index is not None:
-        restart_state, restart_paths = load_restart_state(
+        restart_state, restart_phase_path = load_restart_state(
             OUTPUT_DIR, restart_index, nodes_per_dim
         )
         print(
             "Using final frame from existing outputs as initial condition: "
-            f"{restart_paths[1].name} / {restart_paths[0].name}"
+            f"{restart_phase_path.name}"
         )
 
     extend_time_using_t0 = bool(args.extend_time_using_t0)
@@ -394,6 +434,7 @@ def main():
             name_modifier = str(counter) + "_" + str(p0)
 
         CURRENT_S_PATH, CURRENT_PSI_PATH = build_output_paths(name_modifier)
+        CURRENT_PSI_PHASE_PATH = build_phase_output_path(name_modifier)
 
         openfiles()
 
@@ -455,6 +496,7 @@ def main():
                 ind = ind + 1
                 nextt = nextt + tperplot
 
+        save_final_phase_frame(t, y)
         counter += 1
         print("Finished " + str(counter) + "/" + str(num_frames) + " frames")
     print("Finished all frames!")

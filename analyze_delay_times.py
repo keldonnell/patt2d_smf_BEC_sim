@@ -164,11 +164,11 @@ def main() -> None:
             print(f"Skipping {psi_path.name}: could not extract p0 from filename.")
             continue
 
-        if p0_val <= p_thresh:
-            print(
-                f"Skipping {psi_path.name}: p0={p0_val:.3e} <= p_th={p_thresh:.3e}."
-            )
-            continue
+        # if p0_val <= p_thresh:
+        #     print(
+        #         f"Skipping {psi_path.name}: p0={p0_val:.3e} <= p_th={p_thresh:.3e}."
+        #     )
+        #     continue
 
         times, density_cube = load_density_cube(psi_path)
         if density_cube.shape[1] != params["nodes_per_dim"]:
@@ -241,15 +241,16 @@ def main() -> None:
     import matplotlib.pyplot as plt  # pylint: disable=import-error
 
     fig, ax = plt.subplots()
-    ax.scatter(sim_p_arr, sim_delay_arr, label="Simulation delay", color="tab:blue")
-    if analytic_p_arr.size:
-        ax.plot(
-            analytic_p_arr,
-            analytic_arr,
-            label="Analytic delay 1D",
-            color="tab:orange",
-            linestyle="--",
-        )
+    #ax.scatter(np.log(sim_p_arr - 1.25e-10), np.log(sim_delay_arr), label="Simulation delay", color="tab:blue")
+    ax.plot(sim_p_arr, sim_delay_arr, label="Simulation delay", color="tab:blue")
+    # if analytic_p_arr.size:
+    #     ax.plot(
+    #         analytic_p_arr,
+    #         analytic_arr,
+    #         label="Analytic delay 1D",
+    #         color="tab:orange",
+    #         linestyle="--",
+    #     )
     ax.set_xlabel("p0")
     ax.set_ylabel(r"$t_0$")
     ax.set_title(
