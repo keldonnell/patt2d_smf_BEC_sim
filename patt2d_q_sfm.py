@@ -21,7 +21,7 @@ except ImportError:
     else:
         raise
 
-MAX_ANALYTIC_TIME = 6e10
+MAX_ANALYTIC_TIME = 9e10
 TIME_EXTENSION_FACTOR = 2.5 
 
 INPUT_FILE = None
@@ -31,8 +31,6 @@ PSI_BASE = None
 PSI_PHASE_BASE = None
 CURRENT_S_PATH = None
 CURRENT_PSI_PATH = None
-CURRENT_PSI_PHASE_PATH = None
-PSI_PHASE_BASE = None
 CURRENT_PSI_PHASE_PATH = None
 
 #Open new output data files
@@ -297,7 +295,7 @@ def find_existing_outputs(output_dir: Path, restart_index: int):
 
 def find_phase_output(output_dir: Path, restart_index: int):
     """
-    Locate matching complex psi output file for a given index.
+    Locate complex psi output file for a given index.
     """
     idx = int(restart_index)
     phase_dir = output_dir / "psi_phase"
