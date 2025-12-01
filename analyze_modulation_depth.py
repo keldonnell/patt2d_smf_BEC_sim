@@ -275,10 +275,12 @@ def plot_modulation_depths(
         "axes.spines.right": False,
         "axes.edgecolor": "#1f2933",
         "axes.linewidth": 0.9,
-        "axes.titlesize": 12,
-        "axes.labelsize": 11,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
+        "font.size": 14,
+        "axes.titlesize": 18,
+        "axes.labelsize": 16,
+        "xtick.labelsize": 14,
+        "ytick.labelsize": 14,
+        "legend.fontsize": 14,
         "grid.color": "#d8dee9",
         "grid.linestyle": "-",
         "grid.linewidth": 0.8,
@@ -330,19 +332,19 @@ def plot_modulation_depths(
                 color=threshold_color,
                 linestyle="--",
                 linewidth=1.4,
-                label=r"$p_{th}$",
+                label="p_th 1D",
                 alpha=0.9,
             )
             y_top = ax.get_ylim()[1]
             ax.annotate(
-                r"$p_{th}$",
-                xy=(p_threshold, y_top),
+                "p_th 1D",
+                xy=(p_threshold, y_top - 0.1),
                 xytext=(0, -12),
                 textcoords="offset points",
                 color=threshold_color,
                 ha="center",
                 va="top",
-                fontsize=10,
+                fontsize=14,
             )
 
         # Annotate each point with the corresponding psi file stem when p0 is missing.
@@ -355,7 +357,7 @@ def plot_modulation_depths(
                         textcoords="offset points",
                         xytext=(0, 7),
                         ha="center",
-                        fontsize=8,
+                        fontsize=12,
                         color="#444444",
                     )
 

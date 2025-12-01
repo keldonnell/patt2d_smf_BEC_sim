@@ -289,83 +289,106 @@ def main() -> None:
 
     import matplotlib.pyplot as plt  # pylint: disable=import-error
 
-    fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(12, 5))
+    style_overrides = {
+        "font.size": 16,
+        "axes.titlesize": 20,
+        "axes.labelsize": 18,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "legend.fontsize": 16,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+    }
 
-    # Linear plot vs p0
-    ax_lin.plot(sim_p_arr, sim_delay_arr, marker="o", color="tab:green", label="Simulation delay")
-    ax_lin.set_xlabel("p0")
-    ax_lin.set_ylabel(r"$t_0$")
-    ax_lin.set_title("Delay vs p0")
-    ax_lin.grid(True, alpha=0.3)
-    ax_lin.legend()
+    with plt.rc_context(style_overrides):
+        fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(13.5, 5.5))
 
-    # Log-log plot with shifted p0 using fitted p_th (if available)
-    p_th_fixed = 1.3e-10
-    p_th_for_plot = pth_best if pth_estimate is not None else p_th_fixed
-
-    shifted = sim_p_arr - p_th_for_plot
-    mask = shifted > 0
-    if np.any(mask):
-        x_vals = shifted[mask]
-        y_vals = sim_delay_arr[mask]
-        ax_log.scatter(
-            x_vals,
-            y_vals,
-            label=rf"Simulation delay (p0 - p_th, p_th={p_th_for_plot:.2e})",
+        # Linear plot vs p0
+        ax_lin.plot(
+            sim_p_arr,
+            sim_delay_arr,
+            marker="o",
             color="tab:blue",
+            label="Simulation delay",
+            linewidth=2.0,
         )
+        ax_lin.set_xlabel("p0")
+        ax_lin.set_ylabel(r"$t_0$")
+        ax_lin.set_title("Delay vs p0")
+        ax_lin.grid(True, alpha=0.35)
+        ax_lin.legend()
 
-        # Fit log-log line: log(y) = m*log(x) + c => y = exp(c) * x^m
-        slope_label = ""
-        if x_vals.size >= 2:
-            logx = np.log(x_vals)
-            logy = np.log(y_vals)
-            m, c = np.polyfit(logx, logy, 1)
-            left_x = max(np.min(x_vals) * 0.2, np.min(x_vals) * 0.9, 1e-20)
-            fit_x = np.linspace(left_x, np.max(x_vals), 200)
-            fit_y = np.exp(c) * fit_x ** m
-            ax_log.plot(
-                fit_x,
-                fit_y,
-                color="tab:orange",
-                label=rf"Fit: slope={m:.2f}",
+        # Log-log plot with shifted p0 using fitted p_th (if available)
+        p_th_fixed = 1.3e-10
+        p_th_for_plot = pth_best if pth_estimate is not None else p_th_fixed
+
+        shifted = sim_p_arr - p_th_for_plot
+        mask = shifted > 0
+        if np.any(mask):
+            x_vals = shifted[mask]
+            y_vals = sim_delay_arr[mask]
+            ax_log.scatter(
+                x_vals,
+                y_vals,
+                label=rf"Simulation delay (p0 - p_th, p_th={p_th_for_plot:.2e})",
+                color="tab:blue",
+                s=55,
+                linewidths=1.2,
             )
-            slope_label = f" (slope={m:.2f})"
-            print(f"Log-log fit slope={m:.4f}, intercept={c:.4f}")
+
+            # Fit log-log line: log(y) = m*log(x) + c => y = exp(c) * x^m
+            slope_label = ""
+            if x_vals.size >= 2:
+                logx = np.log(x_vals)
+                logy = np.log(y_vals)
+                m, c = np.polyfit(logx, logy, 1)
+                left_x = max(np.min(x_vals) * 0.2, np.min(x_vals) * 0.9, 1e-20)
+                fit_x = np.linspace(left_x, np.max(x_vals), 200)
+                fit_y = np.exp(c) * fit_x ** m
+                ax_log.plot(
+                    fit_x,
+                    fit_y,
+                    color="tab:orange",
+                    label=rf"Fit: slope={m:.2f}",
+                    linewidth=2.0,
+                )
+                slope_label = f" (slope={m:.2f})"
+                print(f"Log-log fit slope={m:.4f}, intercept={c:.4f}")
+            else:
+                print("Not enough points to fit a line on the log-log plot.")
+
+            ax_log.set_xscale("log")
+            ax_log.set_yscale("log")
+            ax_log.set_xlabel(r"$p_0 - p_{\mathrm{th}}$")
+            ax_log.set_ylabel(r"$t_0$")
+            title_pth = (
+                rf"Log-log delay vs. shifted pump (p_th={p_th_for_plot:.2e})"
+            )
+            ax_log.set_title(title_pth + slope_label)
+            ax_log.legend()
+            ax_log.grid(True, which="both", alpha=0.35)
         else:
-            print("Not enough points to fit a line on the log-log plot.")
+            ax_log.text(
+                0.5,
+                0.5,
+                "No points with p0 > p_th to plot.",
+                ha="center",
+                va="center",
+                transform=ax_log.transAxes,
+                fontsize=16,
+            )
+            ax_log.axis("off")
 
-        ax_log.set_xscale("log")
-        ax_log.set_yscale("log")
-        ax_log.set_xlabel(r"$p_0 - p_{\mathrm{th}}$")
-        ax_log.set_ylabel(r"$t_0$")
-        title_pth = (
-            rf"Log-log delay vs. shifted pump (p_th={p_th_for_plot:.2e})"
-        )
-        ax_log.set_title(title_pth + slope_label)
-        ax_log.legend()
-        ax_log.grid(True, which="both", alpha=0.3)
-    else:
-        ax_log.text(
-            0.5,
-            0.5,
-            "No points with p0 > p_th to plot.",
-            ha="center",
-            va="center",
-            transform=ax_log.transAxes,
-        )
-        ax_log.axis("off")
+        fig.tight_layout()
 
-    fig.tight_layout()
+        if args.save:
+            fig.savefig(args.save, dpi=220, bbox_inches="tight")
+            print(f"Saved plot to {args.save}")
 
-    if args.save:
-        fig.savefig(args.save, dpi=200)
-        print(f"Saved plot to {args.save}")
-
-    if not args.no_show:
-        plt.show()
-    else:
-        plt.close(fig)
+        if not args.no_show:
+            plt.show()
+        else:
+            plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ conda activate smf_env
 : "${N_INTERVALS:?Need N_INTERVALS}"
 INDEX_OFFSET="${INDEX_OFFSET:-0}"
 SIM_NAME="${SIM_NAME:-default_2d_run}"
+EXTEND_SIM="${EXTEND_SIM:-false}"
 
 if ! [[ "${N_INTERVALS}" =~ ^[0-9]+$ ]]; then
   echo "N_INTERVALS must be a non-negative integer, got '${N_INTERVALS}'" >&2
@@ -33,16 +34,27 @@ INDEX=$(( INDEX_OFFSET + TID ))
 # --- Log what we're about to run ---
 echo "JOB $SLURM_JOB_ID ARRAY_ID $TID  -> i=${INDEX} ; range=[${P0_START}, ${P0_END}] ; intervals=${N_INTERVALS} (frames=${NUM_PUMP_FRAMES})"
 echo "Simulation name: ${SIM_NAME}"
-echo "Analytic t0 extension enabled (--extend-time-using-t0)."
+if [[ "${EXTEND_SIM}" == "true" ]]; then
+  echo "Analytic t0 extension enabled (--extend-time-using-t0)."
+else
+  echo "Analytic t0 extension disabled; using input simulation time."
+fi
 
 # --- Run job (your script computes p0 from s,e,n,i) ---
 cd /home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim
 mkdir -p logs
 
-python patt2d_q_sfm.py \
-  -f "${SIM_NAME}" \
-  -s "${P0_START}" \
-  -e "${P0_END}" \
-  -n "${NUM_PUMP_FRAMES}" \
-  -i "${INDEX}" \
-  --extend-time-using-t0
+cmd=(
+  python patt2d_q_sfm.py
+  -f "${SIM_NAME}"
+  -s "${P0_START}"
+  -e "${P0_END}"
+  -n "${NUM_PUMP_FRAMES}"
+  -i "${INDEX}"
+)
+
+if [[ "${EXTEND_SIM}" == "true" ]]; then
+  cmd+=(--extend-time-using-t0)
+fi
+
+"${cmd[@]}"
