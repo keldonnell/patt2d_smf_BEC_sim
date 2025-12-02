@@ -10,7 +10,11 @@ from pathlib import Path
 import numpy as np
 
 try:
-    from analytic_predictors import analytic_delay_time, pump_threshold
+    from analytic_predictors import (
+        analytic_delay_time,
+        analytic_delay_time_2d,
+        pump_threshold,
+    )
 except ImportError as exc:
     raise SystemExit(
         "Could not import analytic predictors. Make sure analytic_predictors.py "
@@ -194,6 +198,7 @@ def main() -> None:
     sim_delay_times: list[float] = []
     analytic_p_values: list[float] = []
     analytic_delay_times: list[float] = []
+    analytic_delay_times_2d: list[float] = []
 
 
     for psi_path in psi_files:
@@ -249,6 +254,12 @@ def main() -> None:
         else:
             print(f"{psi_path.name}: analytic delay time is not finite.")
 
+        analytic_time_2d = analytic_delay_time_2d(p0_val)
+        if np.isfinite(analytic_time_2d):
+            analytic_delay_times_2d.append(float(analytic_time_2d))
+        else:
+            analytic_delay_times_2d.append(float("nan"))
+
         sim_p_values.append(p0_val)
         sim_delay_times.append(delay_time)
 
@@ -287,6 +298,8 @@ def main() -> None:
         analytic_p_arr = np.array([])
         analytic_arr = np.array([])
 
+    analytic_2d_arr = np.array(analytic_delay_times_2d)[order_sim]
+
     import matplotlib.pyplot as plt  # pylint: disable=import-error
 
     style_overrides = {
@@ -311,6 +324,14 @@ def main() -> None:
             color="tab:blue",
             label="Simulation delay",
             linewidth=2.0,
+        )
+        ax_lin.plot(
+            sim_p_arr,
+            analytic_2d_arr,
+            color="tab:orange",
+            linestyle="--",
+            linewidth=2.0,
+            label="Analytic 2D predictor",
         )
         ax_lin.set_xlabel("p0")
         ax_lin.set_ylabel(r"$t_0$")

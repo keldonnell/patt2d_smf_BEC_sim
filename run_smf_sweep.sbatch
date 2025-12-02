@@ -20,9 +20,15 @@ conda activate smf_env
 INDEX_OFFSET="${INDEX_OFFSET:-0}"
 SIM_NAME="${SIM_NAME:-default_2d_run}"
 EXTEND_SIM="${EXTEND_SIM:-false}"
+RESTART_INDEX="${RESTART_INDEX:-}"
 
 if ! [[ "${N_INTERVALS}" =~ ^[0-9]+$ ]]; then
   echo "N_INTERVALS must be a non-negative integer, got '${N_INTERVALS}'" >&2
+  exit 1
+fi
+
+if [ -n "${RESTART_INDEX}" ] && ! [[ "${RESTART_INDEX}" =~ ^-?[0-9]+$ ]]; then
+  echo "RESTART_INDEX must be an integer when provided, got '${RESTART_INDEX}'" >&2
   exit 1
 fi
 
@@ -38,6 +44,9 @@ if [[ "${EXTEND_SIM}" == "true" ]]; then
   echo "Analytic t0 extension enabled (--extend-time-using-t0)."
 else
   echo "Analytic t0 extension disabled; using input simulation time."
+fi
+if [ -n "${RESTART_INDEX}" ]; then
+  echo "Restarting from complex psi index ${RESTART_INDEX} (--restart-from-index)."
 fi
 
 # --- Run job (your script computes p0 from s,e,n,i) ---
@@ -55,6 +64,10 @@ cmd=(
 
 if [[ "${EXTEND_SIM}" == "true" ]]; then
   cmd+=(--extend-time-using-t0)
+fi
+
+if [ -n "${RESTART_INDEX}" ]; then
+  cmd+=(--restart-from-index "${RESTART_INDEX}")
 fi
 
 "${cmd[@]}"

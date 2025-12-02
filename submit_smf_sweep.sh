@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Usage: ./submit_smf_sweep.sh -s P0_START -e P0_END -n N_INTERVALS [-i INDEX_OFFSET] [--sim-name name] [--extend-sim]
+# Usage: ./submit_smf_sweep.sh -s P0_START -e P0_END -n N_INTERVALS [-i INDEX_OFFSET] [--sim-name name] [--extend-sim] [--restart-index idx]
 set -euo pipefail
 
 usage() {
   cat >&2 <<USAGE
-Usage: $0 -s P0_START -e P0_END -n N_INTERVALS [-i INDEX_OFFSET] [--sim-name name] [--extend-sim]
+Usage: $0 -s P0_START -e P0_END -n N_INTERVALS [-i INDEX_OFFSET] [--sim-name name] [--extend-sim] [--restart-index idx]
 
   -s    Start pump saturation parameter (required)
   -e    End pump saturation parameter (required)
@@ -12,6 +12,7 @@ Usage: $0 -s P0_START -e P0_END -n N_INTERVALS [-i INDEX_OFFSET] [--sim-name nam
   -i    Index offset for array jobs (default: 0)
   --sim-name   Simulation name (default: default_2d_run)
   --extend-sim Enable analytic time extension (--extend-time-using-t0)
+  --restart-index  Use an existing psi_phase/psi_not_squared{idx}_*.out as initial state (--restart-from-index idx)
 USAGE
   exit 1
 }
@@ -22,6 +23,7 @@ N_INTERVALS=""
 INDEX_OFFSET="0"
 SIM_NAME="default_2d_run"
 EXTEND_SIM="false"
+RESTART_INDEX=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -49,6 +51,10 @@ while [ "$#" -gt 0 ]; do
       EXTEND_SIM="true"
       shift 1
       ;;
+    --restart-index)
+      RESTART_INDEX="${2:-}" || true
+      shift 2
+      ;;
     *)
       echo "Unrecognised argument: $1" >&2
       usage
@@ -69,8 +75,13 @@ if ! [[ "$INDEX_OFFSET" =~ ^-?[0-9]+$ ]]; then
   exit 1
 fi
 
+if [ -n "$RESTART_INDEX" ] && ! [[ "$RESTART_INDEX" =~ ^-?[0-9]+$ ]]; then
+  echo "Error: RESTART_INDEX must be an integer when provided, got '$RESTART_INDEX'" >&2
+  exit 1
+fi
+
 export P0_START P0_END N_INTERVALS
-export SIM_NAME INDEX_OFFSET EXTEND_SIM
+export SIM_NAME INDEX_OFFSET EXTEND_SIM RESTART_INDEX
 
 cd /home/users/seb25178/Projects/BEC_SMF_2D/patt2d_smf_BEC_sim
 mkdir -p logs

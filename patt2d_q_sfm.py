@@ -11,17 +11,17 @@ from pathlib import Path
 import numpy as np
 
 try:
-    from analytic_predictors import analytic_delay_time, pump_threshold
+    from analytic_predictors import analytic_delay_time_2d
 except ImportError:
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
     analytic_helpers = PROJECT_ROOT / "BEC_self_organisation"
     if analytic_helpers.exists():
         sys.path.append(str(analytic_helpers))
-        from analytic_predictors import analytic_delay_time, pump_threshold
+        from analytic_predictors import analytic_delay_time_2d
     else:
         raise
 
-MAX_ANALYTIC_TIME = 1e11
+MAX_ANALYTIC_TIME = 2e11
 TIME_EXTENSION_FACTOR = 2.5 
 
 INPUT_FILE = None
@@ -418,9 +418,6 @@ def main():
         )
 
     extend_time_using_t0 = bool(args.extend_time_using_t0)
-    pump_threshold_val = (
-        pump_threshold(omega_r, b0, R) if extend_time_using_t0 else None
-    )
 
     global shift, L_dom, hx, tperplot, x, y0, noise, kxmat, kymat
 
@@ -450,19 +447,12 @@ def main():
 
         if extend_time_using_t0:
             target_maxt = base_maxt
-            if (
-                pump_threshold_val is not None
-                and np.isfinite(pump_threshold_val)
-                and p0 > pump_threshold_val
-            ):
-                analytic_t0 = analytic_delay_time(
-                    p0, pump_threshold_val, omega_r, base_seed
+            analytic_t0 = analytic_delay_time_2d(p0)
+            if np.isfinite(analytic_t0):
+                adjusted_time = min(
+                    analytic_t0 * TIME_EXTENSION_FACTOR, MAX_ANALYTIC_TIME
                 )
-                if np.isfinite(analytic_t0):
-                    adjusted_time = min(
-                        analytic_t0 * TIME_EXTENSION_FACTOR, MAX_ANALYTIC_TIME
-                    )
-                    target_maxt = adjusted_time 
+                target_maxt = adjusted_time
 
             if target_maxt - base_maxt > 1e-12:
                 print(

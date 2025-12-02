@@ -10,4 +10,7 @@ seed = 1
 #print((2 / (150)) * 1.14e-5)
 print(np.sqrt(100 * 2.2e-10 * 1e-8))
 
+predicted_p0 = 1.284
+print(ap.analytic_delay_time_2d(1.286e-10))
+
 

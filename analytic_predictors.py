@@ -75,3 +75,33 @@ def analytic_delay_time(
         results[mask] = math.inf
 
     return results if results.ndim else float(results)
+
+
+def analytic_delay_time_2d(
+    p0: Number,
+    p_offset: float = 1.284e-10,
+    prefactor: float = math.exp(10.43),
+    exponent: float = -0.528,
+) -> Number:
+    """
+    Empirical 2D delay-time predictor.
+
+    Uses t0 = prefactor * (p0 - p_offset) ** exponent. Returns ``math.inf`` when
+    p0 <= p_offset or for non-finite inputs.
+    """
+    p0_arr = np.asarray(p0, dtype=float)
+    results = np.full_like(p0_arr, math.inf, dtype=float)
+
+    if not np.isfinite(p_offset) or not np.isfinite(prefactor) or not np.isfinite(exponent):
+        return results if results.ndim else float(results)
+
+    mask = np.isfinite(p0_arr) & (p0_arr > p_offset)
+    if not np.any(mask):
+        return results if results.ndim else float(results)
+
+    shifted = p0_arr[mask] - p_offset
+    results_subset = prefactor * (shifted ** exponent)
+    results_subset = np.where(np.isfinite(results_subset), results_subset, math.inf)
+    results[mask] = results_subset
+
+    return results if results.ndim else float(results)
