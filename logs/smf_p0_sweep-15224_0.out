@@ -1,0 +1,13 @@
+/opt/local/miniconda_23_9/lib/python3.11/site-packages/conda/base/context.py:201: FutureWarning: Adding 'defaults' to channel list implicitly is deprecated and will be removed in 25.3. 
+
+To remove this warning, please choose a default channel explicitly with conda's regular configuration system, e.g. by adding 'defaults' to the list of channels:
+
+  conda config --add channels defaults
+
+For more information see https://docs.conda.io/projects/conda/en/stable/user-guide/configuration/use-condarc.html
+
+  deprecated.topic(
+JOB 15224 ARRAY_ID 0  -> i=3 ; range=[1.275e-10, 1.275e-10] ; intervals=0 (frames=1)
+Simulation name: hysteresis_upsweep
+Analytic t0 extension enabled (--extend-time-using-t0).
+Restarting from complex psi index 2 (--restart-from-index).
