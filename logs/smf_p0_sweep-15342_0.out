@@ -11,3 +11,4 @@ JOB 15342 ARRAY_ID 0  -> i=4 ; range=[1.3e-10, 1.3e-10] ; intervals=0 (frames=1)
 Simulation name: hysteresis_upsweep
 Analytic t0 extension enabled (--extend-time-using-t0).
 Restarting from complex psi index 3 (--restart-from-index).
+slurmstepd: error: *** JOB 15342 ON hippo2 CANCELLED AT 2025-12-11T22:22:34 DUE TO TIME LIMIT ***
